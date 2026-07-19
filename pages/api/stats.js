@@ -85,7 +85,7 @@ export default async function handler(req, res) {
       unconfirmed: !!unconfirmed[source.addr],
     }));
     // Umbrella projects (e.g. Claw Fomo) with expandable version rows.
-    result.sources = groupSources(flatSources);
+    result.sources = groupSources(flatSources, registry);
     result.scannedTo = scannedTo;
     result.latestBlock = latest;
 

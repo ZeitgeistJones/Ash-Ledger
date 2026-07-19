@@ -259,7 +259,7 @@ export default function Home() {
             <div className="tile">
               <div className="label">Burn events</div>
               <div className="value">{data.totalBurns}</div>
-              <div className="sub">across {data.uniqueSources} sources</div>
+              <div className="sub">unique on-chain transactions across {data.uniqueSources} sources</div>
             </div>
             <div className="tile">
               <div className="label">Unlabeled</div>
@@ -288,7 +288,7 @@ export default function Home() {
 
           <section>
             <h2>Sources</h2>
-            <div className="section-note">Projects that caused CLAWD burns. Multi-version products are grouped — expand to see each contract.</div>
+            <div className="section-note">Projects that caused CLAWD burns. Burns = unique transactions. Multi-version products are grouped — expand to see each contract.</div>
             <div className="filters" role="group" aria-label="Filter by category">
               {["clawdbotatg", "community", "unlabeled"].map(cat => (
                 <button
