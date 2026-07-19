@@ -61,12 +61,24 @@ function decodeBurn(log) {
 
 async function fetchChunk(from, to, toTopic) {
   let lo = from, hi = to, attempts = 0;
-  while (attempts < 10) {
+  while (attempts < 12) {
     try {
-      return await rpc("eth_getLogs", [{ address: CLAWD_TOKEN, topics: [TRANSFER_TOPIC, null, toTopic], fromBlock: "0x" + lo.toString(16), toBlock: "0x" + hi.toString(16) }], 3);
+      const logs = await rpc("eth_getLogs", [{
+        address: CLAWD_TOKEN,
+        topics: [TRANSFER_TOPIC, null, toTopic],
+        fromBlock: "0x" + lo.toString(16),
+        toBlock: "0x" + hi.toString(16),
+      }], 3);
+      if (Array.isArray(logs) && logs.length >= 10000 && hi > lo) {
+        const mid = lo + Math.floor((hi - lo) / 2);
+        const left = await fetchChunk(lo, mid, toTopic);
+        const right = await fetchChunk(mid + 1, hi, toTopic);
+        return left.concat(right);
+      }
+      return logs || [];
     } catch (e) {
       attempts++;
-      if (hi - lo < 200) throw e;
+      if (hi - lo < 50) throw e;
       hi = lo + Math.floor((hi - lo) / 2);
     }
   }
@@ -88,7 +100,7 @@ async function main() {
     return;
   }
 
-  const CHUNK_SIZE = 5000;
+  const CHUNK_SIZE = 2000;
   const CONCURRENCY = 6;
   const ranges = [];
   for (let f = scannedTo + 1; f <= latest; f += CHUNK_SIZE) ranges.push([f, Math.min(f + CHUNK_SIZE - 1, latest)]);
@@ -118,10 +130,20 @@ async function main() {
   const zeroLogs = await scanFor(ZERO_TOPIC, "zero");
 
   const newBurns = [...deadLogs.map(decodeBurn), ...zeroLogs.map(decodeBurn)].filter(Boolean);
-  burns = burns.concat(newBurns);
+  // Dedupe by tx|from|amount|block so re-runs / overlap don't inflate totals.
+  const keyOf = (b) => `${String(b.tx).toLowerCase()}|${b.from}|${b.amount}|${b.block}`;
+  const seen = new Set(burns.map(keyOf));
+  let added = 0;
+  for (const b of newBurns) {
+    const k = keyOf(b);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    burns.push(b);
+    added++;
+  }
   scannedTo = latest;
 
-  console.log(`Found ${newBurns.length} new burns. Total cached: ${burns.length}.`);
+  console.log(`Found ${newBurns.length} new log rows, ${added} unique added. Total cached: ${burns.length}.`);
   console.log("Writing to Upstash...");
   await redis.set(CACHE_KEY, { burns, scannedTo, cachedAt: Date.now() }, { ex: 60 * 60 * 24 * 30 });
   console.log("DONE — cache seeded. The live site should now load instantly.");

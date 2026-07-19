@@ -72,9 +72,8 @@ export default async function handler(req, res) {
 
     // Causal attribution: rebucket Transfer.from → project that caused the burn.
     const attrMap = { ...(attrCached || {}) };
-    const beforeKeys = Object.keys(attrMap).length;
-    await resolveMissingAttributions(burns, attrMap, rpc, { limit: 25 });
-    if (Object.keys(attrMap).length !== beforeKeys) {
+    const { changed } = await resolveMissingAttributions(burns, attrMap, rpc, { limit: 25 });
+    if (changed) {
       redis.set(ATTR_KEY, attrMap, { ex: 60 * 60 * 24 * 30 }).catch(() => {});
     }
     const attributed = attributeBurns(burns, attrMap);
