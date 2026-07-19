@@ -9,6 +9,7 @@
 import { Redis } from "@upstash/redis";
 import { DEPLOY_BLOCK, rpc, scanRange, analyze } from "../../lib/ash-ledger";
 import { attributeBurns, resolveMissingAttributions } from "../../lib/attribution";
+import { groupSources } from "../../lib/projects";
 import baseRegistry from "../../lib/registry";
 import baseCandidates from "../../lib/candidates";
 
@@ -63,6 +64,7 @@ export default async function handler(req, res) {
       unconfirmed[addr] = true;
       registry[addr] = {
         name: candidate.suggestedName,
+        project: candidate.project || candidate.suggestedName,
         category: candidate.suggestedCategory,
         note: candidate.evidence || null,
       };
@@ -78,10 +80,12 @@ export default async function handler(req, res) {
     const attributed = attributeBurns(burns, attrMap);
 
     const result = analyze(attributed, registry);
-    result.sources = result.sources.map(source => ({
+    const flatSources = result.sources.map(source => ({
       ...source,
       unconfirmed: !!unconfirmed[source.addr],
     }));
+    // Umbrella projects (e.g. Claw Fomo) with expandable version rows.
+    result.sources = groupSources(flatSources);
     result.scannedTo = scannedTo;
     result.latestBlock = latest;
 
