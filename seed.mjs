@@ -9,10 +9,15 @@
 //        UPSTASH_REDIS_REST_URL=...
 //        UPSTASH_REDIS_REST_TOKEN=...
 //        RPC_URL=https://base-mainnet.g.alchemy.com/v2/YOUR_KEY   (strongly recommended)
+//        ETHERSCAN_API_KEY=...   (optional; for Incinerator gap repair — never commit)
 //   3. node --env-file=.env seed.mjs
 //   4. Reload the live site once it prints "DONE — cache seeded."
 //
 // Safe to re-run any time — only scans blocks not already cached.
+//
+// If Incinerator counts look short after seeding (RPC getLogs truncation),
+// fill gaps via explorer APIs (Etherscan V2 when plan covers Base, else Blockscout):
+//   node --env-file=.env --env-file=.env.local scripts/repair-incinerator-etherscan.mjs
 
 import { Redis } from "@upstash/redis";
 
