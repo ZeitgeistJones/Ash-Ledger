@@ -45,9 +45,6 @@ export default async function handler(req, res) {
     const registry = { ...baseRegistry, ...overrides };
 
     const result = analyze(burns, registry);
-    // Keep unknown addresses in aggregate totals, but reserve the public source
-    // table for reviewed labels. Unlabeled addresses are reviewed at /admin.
-    result.sources = result.sources.filter(source => source.category !== "unlabeled");
     result.scannedTo = scannedTo;
     result.latestBlock = latest;
 

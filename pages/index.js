@@ -65,6 +65,9 @@ export default function Home() {
         th{ text-align:left;font-weight:500;font-size:11px;letter-spacing:.2em; text-transform:uppercase;color:var(--cold);padding:10px 14px 10px 0; border-bottom:1px solid var(--soot-edge); }
         td{padding:11px 14px 11px 0;border-bottom:1px solid var(--soot-edge);vertical-align:baseline;white-space:nowrap}
         td.num,th.num{text-align:right;padding-right:0}
+        .source-cell{display:flex;flex-direction:column;gap:4px}
+        .source-name{color:var(--ash)}
+        .source-addr{font-size:11px;color:var(--cold)}
         .table-scroll{overflow-x:auto}
         .bar{display:inline-block;height:8px;background:var(--ember);vertical-align:middle;margin-right:10px;min-width:2px}
         .tag{ font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border:1px solid var(--soot-edge); }
@@ -154,7 +157,10 @@ export default function Home() {
                     return (
                       <tr key={i}>
                         <td>
-                          {s.name || <a href={`https://basescan.org/address/${s.addr}`} target="_blank" rel="noopener noreferrer">{shortAddr(s.addr)}</a>}
+                          <div className="source-cell">
+                            {s.name && <span className="source-name">{s.name}</span>}
+                            <a className="source-addr" href={`https://basescan.org/address/${s.addr}`} target="_blank" rel="noopener noreferrer">{shortAddr(s.addr)}</a>
+                          </div>
                         </td>
                         <td><span className={`tag ${s.category}`}>{s.category}</span></td>
                         <td className="num"><span className="bar" style={{ width: Math.max(2, Number(BigInt(s.burned) * 90n / BigInt(max))) }}></span>{s.count}</td>
