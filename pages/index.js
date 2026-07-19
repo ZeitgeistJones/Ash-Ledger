@@ -16,12 +16,22 @@ function pct(part, whole) {
   const p = Number(BigInt(part)), w = Number(BigInt(whole));
   return w === 0 ? 0 : Math.round((p / w) * 100);
 }
+function sharePct(part, whole) {
+  const p = Number(BigInt(part)), w = Number(BigInt(whole));
+  if (w === 0 || p === 0) return "0";
+  const n = (p / w) * 100;
+  if (n > 0 && n < 0.01) return "<0.01";
+  return n.toFixed(2);
+}
 function burnOfSupply(weiStr) {
   const CLAWD_SUPPLY = 100_000_000_000n; // original 100B mint
   const burned = BigInt(weiStr) / 10n ** 18n;
   return Number((burned * 10000n) / CLAWD_SUPPLY) / 100; // two decimals
 }
 function shortAddr(a) { return a.slice(0, 6) + "…" + a.slice(-4); }
+function sourceLabel(s) {
+  return (s.name || s.project || s.addr || "").toLowerCase();
+}
 
 // Matches lib/ash-ledger DEPLOY_BLOCK; empty Redis cache defaults scannedTo to this − 1.
 const DEPLOY_BLOCK = 41337394;
@@ -67,7 +77,7 @@ function SourceRows({ source, max, totalBurned, expanded, onToggle }) {
         <td><span className={`tag ${source.category}`}>{source.category}{source.unconfirmed ? "*" : ""}</span></td>
         <td className="num"><span className="bar" style={{ width: Math.max(2, Number(BigInt(source.burned) * 90n / BigInt(max))) }}></span>{source.count}</td>
         <td className="num">{fmtClawd(source.burned)}</td>
-        <td className="num">{pct(source.burned, totalBurned)}%</td>
+        <td className="num">{sharePct(source.burned, totalBurned)}%</td>
       </tr>
       {open && source.versions.map(version => (
         <tr key={version.addr} className="source-row version">
@@ -83,7 +93,7 @@ function SourceRows({ source, max, totalBurned, expanded, onToggle }) {
           <td><span className={`tag ${version.category}`}>{version.category}{version.unconfirmed ? "*" : ""}</span></td>
           <td className="num">{version.count}</td>
           <td className="num">{fmtClawd(version.burned)}</td>
-          <td className="num">{pct(version.burned, totalBurned)}%</td>
+          <td className="num">{sharePct(version.burned, totalBurned)}%</td>
         </tr>
       ))}
     </>
@@ -95,6 +105,7 @@ export default function Home() {
   const [err, setErr] = useState(null);
   const [expanded, setExpanded] = useState({});
   const [cats, setCats] = useState({ clawdbotatg: true, community: true, unlabeled: true });
+  const [sort, setSort] = useState({ key: "burned", dir: "desc" });
 
   const load = () => {
     setErr(null);
@@ -116,6 +127,18 @@ export default function Home() {
       if (!next.clawdbotatg && !next.community && !next.unlabeled) return prev;
       return next;
     });
+  };
+
+  const clickSort = (key) => {
+    setSort(prev => {
+      if (prev.key === key) return { key, dir: prev.dir === "desc" ? "asc" : "desc" };
+      return { key, dir: key === "name" ? "asc" : "desc" };
+    });
+  };
+
+  const sortMark = (key) => {
+    if (sort.key !== key) return "";
+    return sort.dir === "asc" ? " ↑" : " ↓";
   };
 
   return (
@@ -146,6 +169,9 @@ export default function Home() {
         .split-legend .dot{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:middle}
         table{width:100%;border-collapse:collapse;font-size:12.5px}
         th{ text-align:left;font-weight:500;font-size:11px;letter-spacing:.2em; text-transform:uppercase;color:var(--cold);padding:10px 14px 10px 0; border-bottom:1px solid var(--soot-edge); }
+        th.sortable{cursor:pointer;user-select:none}
+        th.sortable:hover{color:var(--ash)}
+        th.sortable.active{color:var(--flame)}
         td{padding:11px 14px 11px 0;border-bottom:1px solid var(--soot-edge);vertical-align:baseline;white-space:nowrap}
         td.num,th.num{text-align:right;padding-right:0}
         .source-cell{display:flex;flex-direction:column;gap:4px}
@@ -196,7 +222,24 @@ export default function Home() {
         const cacheUnseeded = data.scannedTo === EMPTY_SCAN_SENTINEL;
         const farBehind = behindBy > 100_000;
         const filtered = data.sources.filter(s => cats[s.category]);
-        const max = filtered[0]?.burned || data.sources[0]?.burned || "1";
+        const sorted = [...filtered].sort((a, b) => {
+          let cmp = 0;
+          if (sort.key === "name") {
+            cmp = sourceLabel(a).localeCompare(sourceLabel(b));
+          } else if (sort.key === "count") {
+            cmp = a.count - b.count;
+          } else {
+            const ab = BigInt(a.burned), bb = BigInt(b.burned);
+            cmp = ab > bb ? 1 : ab < bb ? -1 : 0;
+          }
+          return sort.dir === "asc" ? cmp : -cmp;
+        });
+        let maxBurned = 0n;
+        for (const s of filtered) {
+          const b = BigInt(s.burned);
+          if (b > maxBurned) maxBurned = b;
+        }
+        const max = maxBurned === 0n ? "1" : maxBurned.toString();
         return (
         <div>
           {(cacheUnseeded || farBehind) && (
@@ -261,9 +304,17 @@ export default function Home() {
             </div>
             <div className="table-scroll">
               <table>
-                <thead><tr><th>Source</th><th>Category</th><th className="num">Burns</th><th className="num">CLAWD burned</th><th className="num">Share</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th className={`sortable${sort.key === "name" ? " active" : ""}`} onClick={() => clickSort("name")}>Source{sortMark("name")}</th>
+                    <th>Category</th>
+                    <th className={`num sortable${sort.key === "count" ? " active" : ""}`} onClick={() => clickSort("count")}>Burns{sortMark("count")}</th>
+                    <th className={`num sortable${sort.key === "burned" ? " active" : ""}`} onClick={() => clickSort("burned")}>CLAWD burned{sortMark("burned")}</th>
+                    <th className="num">Share</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {filtered.map((s) => {
+                  {sorted.map((s) => {
                     const key = s.project || s.name || s.addr;
                     return (
                       <SourceRows
@@ -279,7 +330,7 @@ export default function Home() {
                 </tbody>
               </table>
             </div>
-            {filtered.length === 0 && (
+            {sorted.length === 0 && (
               <div className="empty-filter">No sources in the selected categories.</div>
             )}
             {data.sources.some(s => s.unconfirmed || s.versions?.some(v => v.unconfirmed)) && (
