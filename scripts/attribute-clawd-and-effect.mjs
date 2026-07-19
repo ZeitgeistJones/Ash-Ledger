@@ -44,8 +44,12 @@ async function rpc(method, params) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
       });
-      const data = await res.json();
-      if (data.error) throw new Error(data.error.message);
+      const text = await res.text();
+      if (!res.ok || text.trimStart().startsWith("<")) {
+        throw new Error(`${url} → http ${res.status} (non-json)`);
+      }
+      const data = JSON.parse(text);
+      if (data.error) throw new Error(data.error.message || "rpc error");
       return data.result;
     } catch (e) {
       last = e;
@@ -112,23 +116,29 @@ if (!tipTopic0) {
 }
 console.log("Tip topic0:", tipTopic0);
 
-const deadTopic = "0x" + DEAD.slice(2).padStart(64, "0");
-console.log("Fetching Tip events with winner=dead...");
-const tipDeadLogs = await fetchLogs({
+console.log("Fetching all Tip events on ClawdAndEffect...");
+const tipLogs = await fetchLogs({
   address: EFFECT,
   fromBlock: 0,
   toBlock: "latest",
   topic0: tipTopic0,
-  topic2: deadTopic,
   pageSize: 1000,
   delayMs: 400,
 });
-console.log("Tip→dead events:", tipDeadLogs.length);
+console.log("Tip events:", tipLogs.length);
 
 const burnTxs = new Set([KNOWN_BURN_TX.toLowerCase()]);
-for (const log of tipDeadLogs) {
-  burnTxs.add(String(log.transactionHash).toLowerCase());
+for (const log of tipLogs) {
+  const winner = log.topics?.[2]
+    ? ("0x" + String(log.topics[2]).slice(26)).toLowerCase()
+    : null;
+  if (winner === DEAD || winner === ZERO) {
+    const tx = String(log.transactionHash).toLowerCase();
+    burnTxs.add(tx);
+    console.log(" Tip→burn", tx, "winner", winner);
+  }
 }
+console.log("Burn tip txs:", burnTxs.size);
 
 let added = 0;
 let attributed = 0;
