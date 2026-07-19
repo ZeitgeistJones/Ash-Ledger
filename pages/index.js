@@ -94,6 +94,7 @@ export default function Home() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   const [expanded, setExpanded] = useState({});
+  const [cats, setCats] = useState({ clawdbotatg: true, community: true, unlabeled: true });
 
   const load = () => {
     setErr(null);
@@ -106,6 +107,15 @@ export default function Home() {
 
   const toggle = (key) => {
     setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const toggleCat = (cat) => {
+    setCats(prev => {
+      const next = { ...prev, [cat]: !prev[cat] };
+      // Keep at least one category on so the table never goes blank by accident.
+      if (!next.clawdbotatg && !next.community && !next.unlabeled) return prev;
+      return next;
+    });
   };
 
   return (
@@ -145,9 +155,15 @@ export default function Home() {
         .source-addr{font-size:11px;color:var(--cold)}
         .version-count{font-size:11px;color:var(--cold);font-weight:400}
         .toggle{ background:none;border:none;color:var(--flame);cursor:pointer;font:inherit;padding:0 2px;line-height:1; }
+        .filters{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}
+        .filter{ font:inherit;font-size:11px;letter-spacing:.08em;text-transform:uppercase; padding:6px 12px;cursor:pointer;background:transparent;border:1px solid var(--soot-edge);color:var(--cold); }
+        .filter.on.clawdbotatg{color:var(--ember);border-color:var(--ember)}
+        .filter.on.community{color:var(--flame);border-color:var(--flame)}
+        .filter.on.unlabeled{color:var(--ash);border-color:var(--cold)}
         tr.version td{background:rgba(255,255,255,.02);color:var(--cold)}
         tr.version .source-name{color:var(--ash)}
         .footnote{font-size:11px;color:var(--cold);margin-top:14px}
+        .empty-filter{padding:28px 0;color:var(--cold);font-size:12px}
         .table-scroll{overflow-x:auto}
         .bar{display:inline-block;height:8px;background:var(--ember);vertical-align:middle;margin-right:10px;min-width:2px}
         .tag{ font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border:1px solid var(--soot-edge); }
@@ -179,7 +195,8 @@ export default function Home() {
         const behindBy = data.latestBlock != null ? data.latestBlock - data.scannedTo : 0;
         const cacheUnseeded = data.scannedTo === EMPTY_SCAN_SENTINEL;
         const farBehind = behindBy > 100_000;
-        const max = data.sources[0]?.burned || "1";
+        const filtered = data.sources.filter(s => cats[s.category]);
+        const max = filtered[0]?.burned || data.sources[0]?.burned || "1";
         return (
         <div>
           {(cacheUnseeded || farBehind) && (
@@ -229,11 +246,24 @@ export default function Home() {
           <section>
             <h2>Sources</h2>
             <div className="section-note">Projects that caused CLAWD burns. Multi-version products are grouped — expand to see each contract.</div>
+            <div className="filters" role="group" aria-label="Filter by category">
+              {["clawdbotatg", "community", "unlabeled"].map(cat => (
+                <button
+                  key={cat}
+                  type="button"
+                  className={`filter ${cat}${cats[cat] ? " on" : ""}`}
+                  aria-pressed={cats[cat]}
+                  onClick={() => toggleCat(cat)}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
             <div className="table-scroll">
               <table>
                 <thead><tr><th>Source</th><th>Category</th><th className="num">Burns</th><th className="num">CLAWD burned</th><th className="num">Share</th></tr></thead>
                 <tbody>
-                  {data.sources.map((s) => {
+                  {filtered.map((s) => {
                     const key = s.project || s.name || s.addr;
                     return (
                       <SourceRows
@@ -249,6 +279,9 @@ export default function Home() {
                 </tbody>
               </table>
             </div>
+            {filtered.length === 0 && (
+              <div className="empty-filter">No sources in the selected categories.</div>
+            )}
             {data.sources.some(s => s.unconfirmed || s.versions?.some(v => v.unconfirmed)) && (
               <div className="footnote">* researched suggestion — not yet confirmed in /admin</div>
             )}
