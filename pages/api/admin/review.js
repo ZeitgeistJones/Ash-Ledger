@@ -1,10 +1,12 @@
 // Private review queue for unlabeled burn sources.
 //
-// Pending suggestions are deliberately separate from live registry overrides.
-// A label only affects public stats after an explicit admin approval.
+// Pending suggestions are separate from live registry overrides. Researched
+// candidates in lib/candidates.js are soft-applied on the public dashboard with
+// an asterisk until approved here (writes an override) or rejected.
 
 import { Redis } from "@upstash/redis";
 import { analyze } from "../../../lib/ash-ledger";
+import { attributeBurns } from "../../../lib/attribution";
 import baseRegistry from "../../../lib/registry";
 import baseCandidates from "../../../lib/candidates";
 
@@ -12,6 +14,7 @@ const redis = Redis.fromEnv();
 const CACHE_KEY = "ash-ledger:burns:v1";
 const OVERRIDES_KEY = "ash-ledger:registry-overrides:v1";
 const CANDIDATES_KEY = "ash-ledger:label-candidates:v1";
+const ATTR_KEY = "ash-ledger:attribution:v1";
 const VALID_CATEGORIES = ["clawdbotatg", "community"];
 const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
 
@@ -38,12 +41,13 @@ export default async function handler(req, res) {
 
   try {
     if (action === "list") {
-      const [cached, overrides, reviews] = await Promise.all([
+      const [cached, overrides, reviews, attrCached] = await Promise.all([
         redis.get(CACHE_KEY),
         redis.get(OVERRIDES_KEY),
         redis.get(CANDIDATES_KEY),
+        redis.get(ATTR_KEY),
       ]);
-      const burns = cached?.burns || [];
+      const burns = attributeBurns(cached?.burns || [], attrCached || {});
       const registry = { ...baseRegistry, ...(overrides || {}) };
       const result = analyze(burns, registry);
       const reviewMap = reviews || {};

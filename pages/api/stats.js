@@ -3,10 +3,12 @@
 // Same incremental-cache pattern as Furnace Log: scan once, cache in Upstash,
 // only scan NEW blocks on subsequent requests. Registry overrides (from the
 // admin endpoint) are stored separately and merged in at read time, so
-// relabeling never requires a rescan.
+// relabeling never requires a rescan. Causal attribution rebuckets Transfer.from
+// to the project that caused the burn without changing totals.
 
 import { Redis } from "@upstash/redis";
 import { DEPLOY_BLOCK, rpc, scanRange, analyze } from "../../lib/ash-ledger";
+import { attributeBurns, resolveMissingAttributions } from "../../lib/attribution";
 import baseRegistry from "../../lib/registry";
 import baseCandidates from "../../lib/candidates";
 
@@ -14,6 +16,7 @@ const redis = Redis.fromEnv();
 const CACHE_KEY = "ash-ledger:burns:v1";
 const OVERRIDES_KEY = "ash-ledger:registry-overrides:v1";
 const CANDIDATES_KEY = "ash-ledger:label-candidates:v1";
+const ATTR_KEY = "ash-ledger:attribution:v1";
 const LOCK_KEY = "ash-ledger:scanlock:v1";
 
 export default async function handler(req, res) {
@@ -44,9 +47,10 @@ export default async function handler(req, res) {
 
     // Registry + overrides are confirmed. Soft-apply researched candidates so the
     // public table can show names/categories with an asterisk until /admin confirms.
-    const [overrides, reviews] = await Promise.all([
+    const [overrides, reviews, attrCached] = await Promise.all([
       redis.get(OVERRIDES_KEY),
       redis.get(CANDIDATES_KEY),
+      redis.get(ATTR_KEY),
     ]);
     const registry = { ...baseRegistry, ...(overrides || {}) };
     const reviewMap = reviews || {};
@@ -64,7 +68,16 @@ export default async function handler(req, res) {
       };
     }
 
-    const result = analyze(burns, registry);
+    // Causal attribution: rebucket Transfer.from → project that caused the burn.
+    const attrMap = { ...(attrCached || {}) };
+    const beforeKeys = Object.keys(attrMap).length;
+    await resolveMissingAttributions(burns, attrMap, rpc, { limit: 25 });
+    if (Object.keys(attrMap).length !== beforeKeys) {
+      redis.set(ATTR_KEY, attrMap, { ex: 60 * 60 * 24 * 30 }).catch(() => {});
+    }
+    const attributed = attributeBurns(burns, attrMap);
+
+    const result = analyze(attributed, registry);
     result.sources = result.sources.map(source => ({
       ...source,
       unconfirmed: !!unconfirmed[source.addr],

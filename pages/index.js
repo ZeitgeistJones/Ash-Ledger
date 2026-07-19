@@ -154,7 +154,7 @@ export default function Home() {
 
           <section>
             <h2>Sources</h2>
-            <div className="section-note">Every contract that has ever sent CLAWD to a burn address, by amount.</div>
+            <div className="section-note">Every project that has caused CLAWD to hit a burn address, by amount. Address is the attributed contract (or on-chain sender if unlabeled).</div>
             <div className="table-scroll">
               <table>
                 <thead><tr><th>Source</th><th>Category</th><th className="num">Burns</th><th className="num">CLAWD burned</th><th className="num">Share</th></tr></thead>
