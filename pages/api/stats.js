@@ -22,6 +22,8 @@ export default async function handler(req, res) {
     let burns = cached?.burns || [];
     let scannedTo = cached?.scannedTo || DEPLOY_BLOCK - 1;
 
+    // Incremental catch-up. Soft-fail on RPC errors so a single flaky chunk
+    // (e.g. "1 of 1 block ranges failed") never 500s over an otherwise-good cache.
     if (scannedTo < latest) {
       const gotLock = await redis.set(LOCK_KEY, "1", { nx: true, ex: 30 });
       if (gotLock) {
@@ -30,6 +32,8 @@ export default async function handler(req, res) {
           burns = burns.concat(newBurns);
           scannedTo = latest;
           await redis.set(CACHE_KEY, { burns, scannedTo, cachedAt: Date.now() }, { ex: 60 * 60 * 24 * 30 });
+        } catch (scanErr) {
+          console.warn("incremental scan failed, serving cache:", scanErr.message || scanErr);
         } finally {
           await redis.del(LOCK_KEY);
         }

@@ -18,6 +18,10 @@ function pct(part, whole) {
 }
 function shortAddr(a) { return a.slice(0, 6) + "…" + a.slice(-4); }
 
+// Matches lib/ash-ledger DEPLOY_BLOCK; empty Redis cache defaults scannedTo to this − 1.
+const DEPLOY_BLOCK = 41337394;
+const EMPTY_SCAN_SENTINEL = DEPLOY_BLOCK - 1;
+
 export default function Home() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
@@ -68,6 +72,8 @@ export default function Home() {
         .tag.community{color:var(--flame);border-color:var(--flame)}
         .tag.unlabeled{color:var(--cold)}
         footer{ margin-top:72px;padding-top:24px;border-top:1px solid var(--soot-edge); display:flex;flex-wrap:wrap;gap:8px 32px;font-size:12px;color:var(--cold); }
+        .banner{ margin-top:28px;padding:16px 18px;border:1px solid var(--ember);background:var(--soot);font-size:13px;line-height:1.55;color:var(--ash); }
+        .banner strong{color:var(--ember);font-weight:500;letter-spacing:.06em;text-transform:uppercase;font-size:11px;display:block;margin-bottom:6px; }
         .loading,.error{padding:60px 0;text-align:center;color:var(--cold);font-size:13px}
         .error button{ margin-top:16px;font-family:inherit;font-size:13px;letter-spacing:.1em;text-transform:uppercase; background:none;border:1px solid var(--ember);color:var(--ember);padding:12px 28px;cursor:pointer; }
       `}</style>
@@ -86,8 +92,20 @@ export default function Home() {
         </div>
       )}
 
-      {data && (
+      {data && (() => {
+        const behindBy = data.latestBlock != null ? data.latestBlock - data.scannedTo : 0;
+        const cacheUnseeded = data.scannedTo === EMPTY_SCAN_SENTINEL;
+        const farBehind = behindBy > 100_000;
+        return (
         <div>
+          {(cacheUnseeded || farBehind) && (
+            <div className="banner">
+              <strong>{cacheUnseeded ? "Cache not seeded" : "Scan behind tip"}</strong>
+              {cacheUnseeded
+                ? "Burn history has not been written to Redis yet. The block below is the empty-cache default, not a completed scan. Run seed.mjs locally (see README), then reload."
+                : `Indexer is ${(behindBy).toLocaleString()} blocks behind the chain tip. Totals may be incomplete until it catches up.`}
+            </div>
+          )}
           <div className="tiles">
             <div className="tile">
               <div className="label">Total burned</div>
@@ -153,10 +171,16 @@ export default function Home() {
           <footer>
             <span>token <a href={`https://basescan.org/token/${"0x9f86dB9fc6f7c9408e8Fda3Ff8ce4e78ac7a6b07"}`} target="_blank" rel="noopener noreferrer">$CLAWD</a></span>
             <span>watches transfers to both burn destinations: dead address &amp; address(0)</span>
-            <span>scanned through block {data.scannedTo?.toLocaleString()}</span>
+            <span>
+              scanned through block {data.scannedTo?.toLocaleString()}
+              {data.latestBlock != null && (
+                <> · tip {data.latestBlock.toLocaleString()}</>
+              )}
+            </span>
           </footer>
         </div>
-      )}
+        );
+      })()}
     </>
   );
 }
