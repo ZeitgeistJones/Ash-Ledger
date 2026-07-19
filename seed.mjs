@@ -111,13 +111,20 @@ async function main() {
   for (let f = scannedTo + 1; f <= latest; f += CHUNK_SIZE) ranges.push([f, Math.min(f + CHUNK_SIZE - 1, latest)]);
 
   async function scanFor(toTopic, label) {
-    let completed = 0, cursor = 0;
+    let completed = 0, cursor = 0, hardFailures = 0;
     const results = new Array(ranges.length);
+    const errors = [];
     async function worker() {
       while (cursor < ranges.length) {
         const idx = cursor++;
         const [f, t] = ranges[idx];
-        results[idx] = await fetchChunk(f, t, toTopic);
+        try {
+          results[idx] = await fetchChunk(f, t, toTopic);
+        } catch (e) {
+          results[idx] = null;
+          hardFailures++;
+          if (errors.length < 5) errors.push(`${e.message || e} [${f}-${t}]`);
+        }
         completed++;
         if (completed % 20 === 0 || completed === ranges.length) {
           process.stdout.write(`\r  [${label}] ${completed}/${ranges.length} chunks`);
@@ -126,6 +133,13 @@ async function main() {
     }
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
     console.log("");
+    // Never absorb failed chunks as empty — that used to advance scannedTo and drop burns.
+    if (hardFailures > 0) {
+      throw new Error(
+        `${hardFailures} of ${ranges.length} ${label} ranges failed` +
+          (errors.length ? ": " + errors.join("; ") : "")
+      );
+    }
     return results.flat();
   }
 
