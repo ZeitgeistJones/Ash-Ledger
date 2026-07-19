@@ -27,9 +27,73 @@ function shortAddr(a) { return a.slice(0, 6) + "…" + a.slice(-4); }
 const DEPLOY_BLOCK = 41337394;
 const EMPTY_SCAN_SENTINEL = DEPLOY_BLOCK - 1;
 
+function SourceRows({ source, max, totalBurned, expanded, onToggle }) {
+  const hasVersions = Array.isArray(source.versions) && source.versions.length > 1;
+  const open = expanded && hasVersions;
+
+  return (
+    <>
+      <tr className={hasVersions ? "source-row umbrella" : "source-row"}>
+        <td>
+          <div className="source-cell">
+            <span className="source-name">
+              {hasVersions && (
+                <button
+                  type="button"
+                  className="toggle"
+                  aria-expanded={open}
+                  onClick={onToggle}
+                >
+                  {open ? "▾" : "▸"}
+                </button>
+              )}
+              {(source.name || source.project) && (
+                <>
+                  {source.name || source.project}
+                  {source.unconfirmed ? <span className="star">*</span> : null}
+                </>
+              )}
+              {hasVersions && (
+                <span className="version-count"> · {source.versionCount} versions</span>
+              )}
+            </span>
+            {source.addr ? (
+              <a className="source-addr" href={`https://basescan.org/address/${source.addr}`} target="_blank" rel="noopener noreferrer">{shortAddr(source.addr)}</a>
+            ) : (
+              <span className="source-addr">click to see version split</span>
+            )}
+          </div>
+        </td>
+        <td><span className={`tag ${source.category}`}>{source.category}{source.unconfirmed ? "*" : ""}</span></td>
+        <td className="num"><span className="bar" style={{ width: Math.max(2, Number(BigInt(source.burned) * 90n / BigInt(max))) }}></span>{source.count}</td>
+        <td className="num">{fmtClawd(source.burned)}</td>
+        <td className="num">{pct(source.burned, totalBurned)}%</td>
+      </tr>
+      {open && source.versions.map(version => (
+        <tr key={version.addr} className="source-row version">
+          <td>
+            <div className="source-cell nested">
+              <span className="source-name">
+                {version.name || shortAddr(version.addr)}
+                {version.unconfirmed ? <span className="star">*</span> : null}
+              </span>
+              <a className="source-addr" href={`https://basescan.org/address/${version.addr}`} target="_blank" rel="noopener noreferrer">{shortAddr(version.addr)}</a>
+            </div>
+          </td>
+          <td><span className={`tag ${version.category}`}>{version.category}{version.unconfirmed ? "*" : ""}</span></td>
+          <td className="num">{version.count}</td>
+          <td className="num">{fmtClawd(version.burned)}</td>
+          <td className="num">{pct(version.burned, totalBurned)}%</td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
 export default function Home() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
+  const [expanded, setExpanded] = useState({});
 
   const load = () => {
     setErr(null);
@@ -39,6 +103,10 @@ export default function Home() {
       .catch(e => setErr(e.message || String(e)));
   };
   useEffect(load, []);
+
+  const toggle = (key) => {
+    setExpanded(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   return (
     <>
@@ -71,9 +139,14 @@ export default function Home() {
         td{padding:11px 14px 11px 0;border-bottom:1px solid var(--soot-edge);vertical-align:baseline;white-space:nowrap}
         td.num,th.num{text-align:right;padding-right:0}
         .source-cell{display:flex;flex-direction:column;gap:4px}
-        .source-name{color:var(--ash)}
+        .source-cell.nested{padding-left:22px}
+        .source-name{color:var(--ash);display:inline-flex;align-items:center;gap:6px}
         .source-name .star{color:var(--flame)}
         .source-addr{font-size:11px;color:var(--cold)}
+        .version-count{font-size:11px;color:var(--cold);font-weight:400}
+        .toggle{ background:none;border:none;color:var(--flame);cursor:pointer;font:inherit;padding:0 2px;line-height:1; }
+        tr.version td{background:rgba(255,255,255,.02);color:var(--cold)}
+        tr.version .source-name{color:var(--ash)}
         .footnote{font-size:11px;color:var(--cold);margin-top:14px}
         .table-scroll{overflow-x:auto}
         .bar{display:inline-block;height:8px;background:var(--ember);vertical-align:middle;margin-right:10px;min-width:2px}
@@ -106,6 +179,7 @@ export default function Home() {
         const behindBy = data.latestBlock != null ? data.latestBlock - data.scannedTo : 0;
         const cacheUnseeded = data.scannedTo === EMPTY_SCAN_SENTINEL;
         const farBehind = behindBy > 100_000;
+        const max = data.sources[0]?.burned || "1";
         return (
         <div>
           {(cacheUnseeded || farBehind) && (
@@ -154,36 +228,28 @@ export default function Home() {
 
           <section>
             <h2>Sources</h2>
-            <div className="section-note">Every project that has caused CLAWD to hit a burn address, by amount. Address is the attributed contract (or on-chain sender if unlabeled).</div>
+            <div className="section-note">Projects that caused CLAWD burns. Multi-version products are grouped — expand to see each contract.</div>
             <div className="table-scroll">
               <table>
                 <thead><tr><th>Source</th><th>Category</th><th className="num">Burns</th><th className="num">CLAWD burned</th><th className="num">Share</th></tr></thead>
                 <tbody>
-                  {data.sources.map((s, i) => {
-                    const max = data.sources[0].burned;
+                  {data.sources.map((s) => {
+                    const key = s.project || s.name || s.addr;
                     return (
-                      <tr key={i}>
-                        <td>
-                          <div className="source-cell">
-                            {s.name && (
-                              <span className="source-name">
-                                {s.name}{s.unconfirmed ? <span className="star">*</span> : null}
-                              </span>
-                            )}
-                            <a className="source-addr" href={`https://basescan.org/address/${s.addr}`} target="_blank" rel="noopener noreferrer">{shortAddr(s.addr)}</a>
-                          </div>
-                        </td>
-                        <td><span className={`tag ${s.category}`}>{s.category}{s.unconfirmed ? "*" : ""}</span></td>
-                        <td className="num"><span className="bar" style={{ width: Math.max(2, Number(BigInt(s.burned) * 90n / BigInt(max))) }}></span>{s.count}</td>
-                        <td className="num">{fmtClawd(s.burned)}</td>
-                        <td className="num">{pct(s.burned, data.totalBurned)}%</td>
-                      </tr>
+                      <SourceRows
+                        key={key}
+                        source={s}
+                        max={max}
+                        totalBurned={data.totalBurned}
+                        expanded={!!expanded[key]}
+                        onToggle={() => toggle(key)}
+                      />
                     );
                   })}
                 </tbody>
               </table>
             </div>
-            {data.sources.some(s => s.unconfirmed) && (
+            {data.sources.some(s => s.unconfirmed || s.versions?.some(v => v.unconfirmed)) && (
               <div className="footnote">* researched suggestion — not yet confirmed in /admin</div>
             )}
           </section>
