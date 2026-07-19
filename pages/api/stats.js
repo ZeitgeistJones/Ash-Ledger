@@ -8,10 +8,12 @@
 import { Redis } from "@upstash/redis";
 import { DEPLOY_BLOCK, rpc, scanRange, analyze } from "../../lib/ash-ledger";
 import baseRegistry from "../../lib/registry";
+import baseCandidates from "../../lib/candidates";
 
 const redis = Redis.fromEnv();
 const CACHE_KEY = "ash-ledger:burns:v1";
 const OVERRIDES_KEY = "ash-ledger:registry-overrides:v1";
+const CANDIDATES_KEY = "ash-ledger:label-candidates:v1";
 const LOCK_KEY = "ash-ledger:scanlock:v1";
 
 export default async function handler(req, res) {
@@ -40,11 +42,33 @@ export default async function handler(req, res) {
       }
     }
 
-    // Merge admin overrides on top of the baked-in registry — overrides win.
-    const overrides = (await redis.get(OVERRIDES_KEY)) || {};
-    const registry = { ...baseRegistry, ...overrides };
+    // Registry + overrides are confirmed. Soft-apply researched candidates so the
+    // public table can show names/categories with an asterisk until /admin confirms.
+    const [overrides, reviews] = await Promise.all([
+      redis.get(OVERRIDES_KEY),
+      redis.get(CANDIDATES_KEY),
+    ]);
+    const registry = { ...baseRegistry, ...(overrides || {}) };
+    const reviewMap = reviews || {};
+    const unconfirmed = {};
+
+    for (const [addr, candidate] of Object.entries(baseCandidates)) {
+      if (registry[addr]) continue;
+      if (reviewMap[addr]?.status === "rejected") continue;
+      if (!candidate?.suggestedName || !candidate?.suggestedCategory) continue;
+      unconfirmed[addr] = true;
+      registry[addr] = {
+        name: candidate.suggestedName,
+        category: candidate.suggestedCategory,
+        note: candidate.evidence || null,
+      };
+    }
 
     const result = analyze(burns, registry);
+    result.sources = result.sources.map(source => ({
+      ...source,
+      unconfirmed: !!unconfirmed[source.addr],
+    }));
     result.scannedTo = scannedTo;
     result.latestBlock = latest;
 

@@ -16,6 +16,11 @@ function pct(part, whole) {
   const p = Number(BigInt(part)), w = Number(BigInt(whole));
   return w === 0 ? 0 : Math.round((p / w) * 100);
 }
+function burnOfSupply(weiStr) {
+  const CLAWD_SUPPLY = 100_000_000_000n; // original 100B mint
+  const burned = BigInt(weiStr) / 10n ** 18n;
+  return Number((burned * 10000n) / CLAWD_SUPPLY) / 100; // two decimals
+}
 function shortAddr(a) { return a.slice(0, 6) + "…" + a.slice(-4); }
 
 // Matches lib/ash-ledger DEPLOY_BLOCK; empty Redis cache defaults scannedTo to this − 1.
@@ -67,7 +72,9 @@ export default function Home() {
         td.num,th.num{text-align:right;padding-right:0}
         .source-cell{display:flex;flex-direction:column;gap:4px}
         .source-name{color:var(--ash)}
+        .source-name .star{color:var(--flame)}
         .source-addr{font-size:11px;color:var(--cold)}
+        .footnote{font-size:11px;color:var(--cold);margin-top:14px}
         .table-scroll{overflow-x:auto}
         .bar{display:inline-block;height:8px;background:var(--ember);vertical-align:middle;margin-right:10px;min-width:2px}
         .tag{ font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border:1px solid var(--soot-edge); }
@@ -113,7 +120,7 @@ export default function Home() {
             <div className="tile">
               <div className="label">Total burned</div>
               <div className="value hot">{fmtClawdShort(data.totalBurned)}</div>
-              <div className="sub">{fmtClawd(data.totalBurned)} CLAWD, gone forever</div>
+              <div className="sub">{fmtClawd(data.totalBurned)} CLAWD · {burnOfSupply(data.totalBurned).toFixed(2)}% of 100B supply, gone forever</div>
             </div>
             <div className="tile">
               <div className="label">Burn events</div>
@@ -158,11 +165,15 @@ export default function Home() {
                       <tr key={i}>
                         <td>
                           <div className="source-cell">
-                            {s.name && <span className="source-name">{s.name}</span>}
+                            {s.name && (
+                              <span className="source-name">
+                                {s.name}{s.unconfirmed ? <span className="star">*</span> : null}
+                              </span>
+                            )}
                             <a className="source-addr" href={`https://basescan.org/address/${s.addr}`} target="_blank" rel="noopener noreferrer">{shortAddr(s.addr)}</a>
                           </div>
                         </td>
-                        <td><span className={`tag ${s.category}`}>{s.category}</span></td>
+                        <td><span className={`tag ${s.category}`}>{s.category}{s.unconfirmed ? "*" : ""}</span></td>
                         <td className="num"><span className="bar" style={{ width: Math.max(2, Number(BigInt(s.burned) * 90n / BigInt(max))) }}></span>{s.count}</td>
                         <td className="num">{fmtClawd(s.burned)}</td>
                         <td className="num">{pct(s.burned, data.totalBurned)}%</td>
@@ -172,6 +183,9 @@ export default function Home() {
                 </tbody>
               </table>
             </div>
+            {data.sources.some(s => s.unconfirmed) && (
+              <div className="footnote">* researched suggestion — not yet confirmed in /admin</div>
+            )}
           </section>
 
           <footer>
