@@ -37,6 +37,9 @@ clawd-ash-ledger/
      edits a label in a database, nothing on-chain.
    - `RPC_URL` — your Alchemy key, same one from Furnace Log, strongly
      recommended (public RPCs choke on the historical scan)
+   - `CRON_SECRET` — any random string. Vercel Cron sends it as
+     `Authorization: Bearer …` to `/api/cron/daily` (runs once daily at
+     14:00 UTC via `vercel.json`)
 
 ## Before the live site will work: run the seed script
 
