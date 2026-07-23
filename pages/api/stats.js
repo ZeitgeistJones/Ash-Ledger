@@ -25,8 +25,9 @@ export default async function handler(req, res) {
   try {
     const latest = parseInt(await rpc("eth_blockNumber", []), 16);
 
-    // Soft catch-up on read. Cron does the heavier daily pass.
-    const catchUp = await catchUpBurns(redis, latest, { lockTtlSec: 30 });
+    // Furnace-style: capped sequential catch-up (~80k blocks / visit).
+    // Cron takes a bigger daily bite; traffic keeps filling the rest.
+    const catchUp = await catchUpBurns(redis, latest, { lockTtlSec: 25, maxBlocks: 80_000 });
     const burns = catchUp.burns;
     const scannedTo = catchUp.scannedTo;
     for (const err of catchUp.errors.slice(0, 3)) {

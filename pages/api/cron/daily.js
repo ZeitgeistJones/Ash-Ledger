@@ -7,7 +7,7 @@
 import { Redis } from "@upstash/redis";
 import { rpc } from "../../../lib/ash-ledger";
 import { resolveMissingAttributions } from "../../../lib/attribution";
-import { catchUpBurns, ATTR_KEY } from "../../../lib/catch-up";
+import { catchUpBurns, ATTR_KEY, CRON_MAX_BLOCKS } from "../../../lib/catch-up";
 
 export const config = {
   maxDuration: 60,
@@ -38,8 +38,11 @@ export default async function handler(req, res) {
     const redis = Redis.fromEnv();
     const latest = parseInt(await rpc("eth_blockNumber", []), 16);
 
-    // Longer lock than the stats soft catch-up — cron is allowed to grind.
-    const catchUp = await catchUpBurns(redis, latest, { lockTtlSec: 55 });
+    // Bigger bite than per-visit stats (still capped — Furnace-style).
+    const catchUp = await catchUpBurns(redis, latest, {
+      lockTtlSec: 55,
+      maxBlocks: CRON_MAX_BLOCKS,
+    });
 
     const attrMap = { ...((await redis.get(ATTR_KEY)) || {}) };
     const { changed, resolved } = await resolveMissingAttributions(
@@ -56,6 +59,8 @@ export default async function handler(req, res) {
       ok: true,
       latestBlock: latest,
       scannedTo: catchUp.scannedTo,
+      behindBy: catchUp.behindBy,
+      capped: catchUp.capped,
       burnsAdded: catchUp.added,
       advanced: catchUp.advanced,
       skippedLock: catchUp.skippedLock,
