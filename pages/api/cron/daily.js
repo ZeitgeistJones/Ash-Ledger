@@ -7,7 +7,8 @@
 import { Redis } from "@upstash/redis";
 import { rpc } from "../../../lib/ash-ledger";
 import { resolveMissingAttributions } from "../../../lib/attribution";
-import { catchUpBurns, ATTR_KEY, CRON_MAX_BLOCKS } from "../../../lib/catch-up";
+import { catchUpBurns, ATTR_KEY, CACHE_KEY, CRON_MAX_BLOCKS } from "../../../lib/catch-up";
+import { syncIncineratorBurns } from "../../../lib/incinerator-sync";
 
 export const config = {
   maxDuration: 60,
@@ -44,9 +45,21 @@ export default async function handler(req, res) {
       maxBlocks: CRON_MAX_BLOCKS,
     });
 
+    // Incinerator has its own on-chain counters — reconcile so Ash can't lag
+    // the dedicated Furnace tracker when general Transfer scans miss rows.
+    const inc = await syncIncineratorBurns(rpc, catchUp.burns, { maxRanges: 3 });
+    if (inc.added > 0) {
+      const cached = (await redis.get(CACHE_KEY)) || {};
+      await redis.set(
+        CACHE_KEY,
+        { ...cached, burns: inc.burns, scannedTo: catchUp.scannedTo, cachedAt: Date.now() },
+        { ex: 60 * 60 * 24 * 30 }
+      );
+    }
+
     const attrMap = { ...((await redis.get(ATTR_KEY)) || {}) };
     const { changed, resolved } = await resolveMissingAttributions(
-      catchUp.burns,
+      inc.burns,
       attrMap,
       rpc,
       { limit: 200 }
@@ -65,6 +78,12 @@ export default async function handler(req, res) {
       advanced: catchUp.advanced,
       skippedLock: catchUp.skippedLock,
       openGaps: catchUp.gaps.length,
+      incinerator: {
+        liveCalls: inc.liveCalls,
+        redisCount: inc.redisCount,
+        matched: inc.matched,
+        added: inc.added,
+      },
       attributionsResolved: resolved || 0,
       attributionsChanged: !!changed,
       scanErrors: catchUp.errors.slice(0, 5),
