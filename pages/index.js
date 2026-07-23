@@ -20,13 +20,13 @@ function sharePct(part, whole) {
   const p = Number(BigInt(part)), w = Number(BigInt(whole));
   if (w === 0 || p === 0) return "0";
   const n = (p / w) * 100;
-  if (n > 0 && n < 0.01) return "<0.01";
-  return n.toFixed(2);
+  if (n > 0 && n < 0.001) return "<0.001";
+  return n.toFixed(3);
 }
 function burnOfSupply(weiStr) {
   const CLAWD_SUPPLY = 100_000_000_000n; // original 100B mint
   const burned = BigInt(weiStr) / 10n ** 18n;
-  return Number((burned * 10000n) / CLAWD_SUPPLY) / 100; // two decimals
+  return Number((burned * 100000n) / CLAWD_SUPPLY) / 1000; // three decimals (thousandths)
 }
 function shortAddr(a) { return a.slice(0, 6) + "…" + a.slice(-4); }
 function sourceLabel(s) {
@@ -254,7 +254,7 @@ export default function Home() {
             <div className="tile">
               <div className="label">Total burned</div>
               <div className="value hot">{fmtClawdShort(data.totalBurned)}</div>
-              <div className="sub">{fmtClawd(data.totalBurned)} CLAWD · {burnOfSupply(data.totalBurned).toFixed(2)}% of 100B supply, gone forever</div>
+              <div className="sub">{fmtClawd(data.totalBurned)} CLAWD · {burnOfSupply(data.totalBurned).toFixed(3)}% of 100B supply, gone forever</div>
             </div>
             <div className="tile">
               <div className="label">Burn events</div>
